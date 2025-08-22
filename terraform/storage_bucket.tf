@@ -1,3 +1,8 @@
+variable "logging_bucket_name" {
+  description = "Name of the bucket to store access logs"
+  type        = string
+}
+
 # locals.tf
 locals {
   # Define ALL regions - easily extendable (keeping all regions for future expansion)
@@ -82,7 +87,7 @@ resource "google_storage_bucket" "tenant_buckets" {
 
   # Enable access logging (Trunk requirement)
   logging {
-    log_bucket        = var.logging_bucket_name  # Ensure this bucket exists and is not the same as the current bucket
+    log_bucket        = var.logging_bucket_name
     log_object_prefix = "access-logs/${each.value}/"
   }
 
