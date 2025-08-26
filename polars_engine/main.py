@@ -5,7 +5,7 @@ import numpy as np
 from flask import Flask, request, jsonify
 from google.cloud import storage, bigquery
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import tempfile
 from typing import Tuple, Dict, List
 import re
@@ -240,10 +240,10 @@ def perform_data_quality_checks_polars(df: pl.DataFrame) -> Tuple[pl.DataFrame, 
                     bad_mask = bad_mask | price_outlier_mask
         
         # Simplified duplicate detection
-        df_with_row_nr = df.with_row_count("row_nr")
+        df_with_row_nr = df.with_row_index("row_nr")
         # Keep first occurrence of duplicates
         first_occurrences = df_with_row_nr.unique(subset=['user_id', 'product_id', 'event_time'], keep='first')
-        duplicate_bad_mask = ~df_with_row_nr.get_column("row_nr").is_in(first_occurrences.get_column("row_nr"))
+        duplicate_bad_mask = ~df_with_row_nr.get_column("row_nr").is_in(first_occurrences.get_column("row_nr").implode())
         
         # Combine all bad record conditions
         final_bad_mask = bad_mask | duplicate_bad_mask
@@ -275,10 +275,10 @@ def create_ml_features_polars(df: pl.DataFrame, tenant_id: str, file_name: str, 
             pl.lit(tenant_id).alias('tenant_id'),
             pl.lit(region).alias('region'),
             pl.lit(file_name).alias('original_filename'),
-            pl.lit(datetime.utcnow()).alias('processed_timestamp'),
+            pl.lit(datetime.now(UTC)).alias('processed_timestamp'),
             pl.lit('polars').alias('processing_engine'),
             pl.lit('clean').alias('data_quality_status'),
-            pl.lit(datetime.utcnow()).alias('created_at'),
+            pl.lit(datetime.now(UTC)).alias('created_at'),
         ])
         
         # 1. TEMPORAL FEATURES
@@ -341,14 +341,14 @@ def create_ml_features_polars(df: pl.DataFrame, tenant_id: str, file_name: str, 
         category_mapping = {cat: idx for idx, cat in enumerate(unique_categories)}
         
         df = df.with_columns([
-            pl.col('brand').fill_null('unknown').replace(brand_mapping, default=0).alias('brand_encoded'),
-            pl.col('category_code').fill_null('unknown').replace(category_mapping, default=0).alias('category_code_encoded')
+            pl.col('brand').fill_null('unknown').replace_strict(brand_mapping, default=0).alias('brand_encoded'),
+            pl.col('category_code').fill_null('unknown').replace_strict(category_mapping, default=0).alias('category_code_encoded')
         ])
         
         # 5. PRODUCT FEATURES
         # Product popularity
         product_popularity = df.group_by('product_id').agg([
-            pl.count().alias('product_popularity')
+            pl.len().alias('product_popularity')
         ])
         
         df = df.join(product_popularity, on='product_id', how='left')
@@ -370,7 +370,7 @@ def create_ml_features_polars(df: pl.DataFrame, tenant_id: str, file_name: str, 
         
         # 6. USER AGGREGATION FEATURES
         user_stats = df.group_by('user_id').agg([
-            pl.count().alias('user_total_events'),
+            pl.len().alias('user_total_events'),
             pl.col('product_id').n_unique().alias('user_unique_products'),
             pl.col('price').sum().alias('user_total_spent'),
             pl.col('price').mean().alias('user_avg_price'),
@@ -382,11 +382,11 @@ def create_ml_features_polars(df: pl.DataFrame, tenant_id: str, file_name: str, 
         # 7. CONVERSION FEATURES
         # Purchase conversion rate per user
         user_purchases = df.filter(pl.col('event_type') == 'purchase').group_by('user_id').agg([
-            pl.count().alias('user_purchases')
+            pl.len().alias('user_purchases')
         ])
         
         user_total_events = df.group_by('user_id').agg([
-            pl.count().alias('user_total_events_for_conversion')
+            pl.len().alias('user_total_events_for_conversion')
         ])
         
         user_conversion = user_total_events.join(user_purchases, on='user_id', how='left').with_columns([
@@ -487,7 +487,7 @@ def save_bad_records_polars(bad_df: pl.DataFrame, bucket_name: str, file_name: s
             return
             
         # Create bad records file path
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
         original_filename = file_name.split('/')[-1].replace('.csv', '')
         
         if tenant_id == 'shared':
@@ -508,7 +508,7 @@ def save_bad_records_polars(bad_df: pl.DataFrame, bucket_name: str, file_name: s
         blob.metadata = {
             'original_file': file_name,
             'processing_engine': 'polars',
-            'failed_timestamp': datetime.utcnow().isoformat(),
+            'failed_timestamp': datetime.now(UTC).isoformat(),
             'bad_record_count': str(bad_df.height),
             'tenant_id': tenant_id
         }
@@ -529,7 +529,7 @@ def move_file_to_bad_records_polars(bucket_name: str, file_name: str, error_mess
         source_blob = bucket.blob(file_name)
         
         # Create bad_records path
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
         filename = file_name.split('/')[-1]
         
         if tenant_id == 'shared':
@@ -545,7 +545,7 @@ def move_file_to_bad_records_polars(bucket_name: str, file_name: str, error_mess
         bad_blob.metadata = {
             'error_message': error_message,
             'processing_engine': 'polars',
-            'failed_timestamp': datetime.utcnow().isoformat(),
+            'failed_timestamp': datetime.now(UTC).isoformat(),
             'original_path': file_name,
             'tenant_id': tenant_id
         }
@@ -607,7 +607,7 @@ def process_file():
             'tenant_id': tenant_id,
             'good_records': good_record_count,
             'bad_records': bad_record_count,
-            'processing_timestamp': datetime.utcnow().isoformat(),
+            'processing_timestamp': datetime.now(UTC).isoformat(),
             'bigquery_table': f"{PROJECT_ID}.{{regional_dataset}}.{TABLE_ID}"
         }), 200
         

@@ -1,0 +1,428 @@
+name: Multi-Tenant Pipeline CI/CD
+
+on:
+  push:
+    branches: [main, develop, feature/*]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+  POETRY_VERSION: "1.7.1"
+
+jobs:
+  # ============================================================================
+  # LINT AND CODE QUALITY
+  # ============================================================================
+  lint:
+    runs-on: ubuntu-latest
+    name: Code Quality & Linting
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            poetry-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          pip install flake8 black isort mypy pytest
+          pip install pandas polars dask[dataframe] flask google-cloud-storage google-cloud-bigquery
+
+      - name: Run Black (Code Formatting)
+        run: black --check --diff .
+
+      - name: Run isort (Import Sorting)
+        run: isort --check-only --diff .
+
+      - name: Run Flake8 (Linting)
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Run MyPy (Type Checking)
+        run: mypy --ignore-missing-imports .
+        continue-on-error: true
+
+  # ============================================================================
+  # SECURITY SCANNING
+  # ============================================================================
+  security:
+    runs-on: ubuntu-latest
+    name: Security Scanning
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install security tools
+        run: |
+          pip install bandit safety
+
+      - name: Run Bandit (Security Linting)
+        run: bandit -r . -f json -o bandit-report.json
+        continue-on-error: true
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+
+      - name: Run Safety (Dependency Vulnerability Check)
+        run: safety check --json --output safety-report.json
+        continue-on-error: true
+
+      - name: Upload Safety report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: safety-vulnerability-report
+          path: safety-report.json
+
+  # ============================================================================
+  # UNIT TESTING - PARALLEL EXECUTION
+  # ============================================================================
+  test-pandas:
+    runs-on: ubuntu-latest
+    name: Test Pandas Engine
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov pytest-mock pytest-xdist
+          pip install pandas numpy flask google-cloud-storage google-cloud-bigquery psutil
+
+      - name: Run Pandas Engine Tests
+        run: |
+          cd pandas_engine
+          python -m pytest test_pandas_engine.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+
+      - name: Upload Pandas coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: pandas_engine/coverage.xml
+          flags: pandas-engine
+          name: pandas-engine-coverage
+
+  test-polars:
+    runs-on: ubuntu-latest
+    name: Test Polars Engine
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov pytest-mock pytest-xdist
+          pip install polars numpy flask google-cloud-storage google-cloud-bigquery psutil
+
+      - name: Run Polars Engine Tests
+        run: |
+          cd polars_engine
+          python -m pytest test_polars_engine.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+
+      - name: Upload Polars coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: polars_engine/coverage.xml
+          flags: polars-engine
+          name: polars-engine-coverage
+
+  test-dask:
+    runs-on: ubuntu-latest
+    name: Test Dask Engine
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov pytest-mock pytest-xdist
+          pip install dask[dataframe] pandas numpy flask google-cloud-storage google-cloud-bigquery psutil
+
+      - name: Run Dask Engine Tests
+        run: |
+          cd dask_engine
+          python -m pytest test_dask_engine.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+
+      - name: Upload Dask coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: dask_engine/coverage.xml
+          flags: dask-engine
+          name: dask-engine-coverage
+
+  test-router:
+    runs-on: ubuntu-latest
+    name: Test Router Function
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov pytest-mock pytest-xdist
+          pip install requests google-auth
+
+      - name: Run Router Function Tests
+        run: |
+          cd router_function
+          python -m pytest test_router_function.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+
+      - name: Upload Router coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: router_function/coverage.xml
+          flags: router-function
+          name: router-function-coverage
+
+  # ============================================================================
+  # INTEGRATION TESTS
+  # ============================================================================
+  integration-tests:
+    runs-on: ubuntu-latest
+    name: Integration Tests
+    needs: [test-pandas, test-polars, test-dask, test-router]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install all dependencies
+        run: |
+          pip install pytest pytest-cov pytest-mock pytest-xdist
+          pip install pandas polars dask[dataframe] numpy flask
+          pip install google-cloud-storage google-cloud-bigquery google-auth
+          pip install requests psutil
+
+      - name: Run Cross-Engine Integration Tests
+        run: |
+          python -m pytest -v --tb=short -k "test_multi_tenant_isolation or test_complete_processing_workflow" -n auto
+
+      - name: Test Health Check Endpoints
+        run: |
+          # Test that all engines respond to health checks
+          python -c "
+          import sys
+          import subprocess
+          engines = ['pandas_engine', 'polars_engine', 'dask_engine']
+          for engine in engines:
+              try:
+                  result = subprocess.run([
+                      'python', '-c', 
+                      f'from {engine}.main import app; client = app.test_client(); response = client.get(\"/health\"); assert response.status_code == 200; print(f\"✅ {engine} health check passed\")'
+                  ], capture_output=True, text=True, timeout=10)
+                  if result.returncode != 0:
+                      print(f'❌ {engine} health check failed: {result.stderr}')
+                      sys.exit(1)
+                  else:
+                      print(result.stdout.strip())
+              except subprocess.TimeoutExpired:
+                  print(f'❌ {engine} health check timed out')
+                  sys.exit(1)
+          print('🎉 All engine health checks passed!')
+          "
+
+  # ============================================================================
+  # PERFORMANCE BENCHMARKS
+  # ============================================================================
+  performance-tests:
+    runs-on: ubuntu-latest
+    name: Performance Benchmarks
+    needs: [test-pandas, test-polars, test-dask]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-benchmark pytest-mock
+          pip install pandas polars dask[dataframe] numpy flask
+          pip install google-cloud-storage google-cloud-bigquery psutil
+
+      - name: Run Performance Tests
+        run: |
+          python -m pytest -v --tb=short -k "test_large_dataset_processing or test_memory_usage_large_dataset" --benchmark-json=benchmark.json
+
+      - name: Upload Performance Results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: performance-benchmarks
+          path: benchmark.json
+
+  # ============================================================================
+  # TERRAFORM VALIDATION
+  # ============================================================================
+  terraform-validate:
+    runs-on: ubuntu-latest
+    name: Terraform Validation
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Format Check
+        run: |
+          cd terraform
+          terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init -backend=false
+
+      - name: Terraform Validate
+        run: |
+          cd terraform
+          terraform validate
+
+      - name: tflint
+        uses: terraform-linters/setup-tflint@v3
+        with:
+          tflint_version: latest
+
+      - name: Run tflint
+        run: |
+          cd terraform
+          tflint --init
+          tflint
+
+  # ============================================================================
+  # BUILD AND DEPLOYMENT PREPARATION
+  # ============================================================================
+  build:
+    runs-on: ubuntu-latest
+    name: Build & Package
+    needs:
+      [
+        lint,
+        security,
+        test-pandas,
+        test-polars,
+        test-dask,
+        test-router,
+        terraform-validate,
+      ]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Create deployment package
+        run: |
+          mkdir -p dist/
+
+          # Package each engine
+          for engine in pandas_engine polars_engine dask_engine router_function; do
+            echo "Packaging $engine..."
+            cd $engine
+            zip -r "../dist/${engine}.zip" . -x "test_*.py" "__pycache__/*" "*.pyc" ".pytest_cache/*"
+            cd ..
+          done
+
+          # Package Terraform
+          cd terraform
+          zip -r "../dist/terraform-infrastructure.zip" . -x ".terraform/*" "*.tfstate*" ".terraform.lock.hcl"
+          cd ..
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-packages
+          path: dist/
+          retention-days: 30
+
+  # ============================================================================
+  # NOTIFICATION
+  # ============================================================================
+  notify:
+    runs-on: ubuntu-latest
+    name: Notify Results
+    needs: [build, integration-tests, performance-tests]
+    if: always()
+    steps:
+      - name: Notify on Success
+        if: success()
+        run: |
+          echo "🎉 All CI/CD pipeline stages completed successfully!"
+          echo "✅ Code quality checks passed"
+          echo "✅ Security scans completed"
+          echo "✅ All unit tests passed"
+          echo "✅ Integration tests passed"
+          echo "✅ Performance benchmarks completed"
+          echo "✅ Build packages created"
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "❌ CI/CD pipeline failed!"
+          echo "Please check the failed jobs and fix the issues."
+          exit 1
+
+# ============================================================================
+# WORKFLOW CONFIGURATION
+# ============================================================================
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true

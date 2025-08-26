@@ -5,7 +5,7 @@ import numpy as np
 from flask import Flask, request, jsonify
 from google.cloud import storage, bigquery
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import tempfile
 from typing import Tuple, Dict, List
 import re
@@ -131,7 +131,7 @@ def process_file():
             'tenant_id': tenant_id,
             'good_records': good_record_count,
             'bad_records': bad_record_count,
-            'processing_timestamp': datetime.utcnow().isoformat(),
+            'processing_timestamp': datetime.now(UTC).isoformat(),
             'bigquery_table': f"{PROJECT_ID}.{dataset_id}.{TABLE_ID}"
         }), 200
         
@@ -323,10 +323,10 @@ def create_ml_features(df: pd.DataFrame, tenant_id: str, file_name: str, region:
         df['tenant_id'] = tenant_id
         df['region'] = region  # Now properly passed as parameter
         df['original_filename'] = file_name
-        df['processed_timestamp'] = datetime.utcnow()
+        df['processed_timestamp'] = datetime.now(UTC)
         df['processing_engine'] = 'pandas'
         df['data_quality_status'] = 'clean'
-        df['created_at'] = datetime.utcnow()  # For partitioning
+        df['created_at'] = datetime.now(UTC)  # For partitioning
         
         # 1. TEMPORAL FEATURES
         df['hour'] = df['event_time'].dt.hour
@@ -554,7 +554,7 @@ def save_bad_records(bad_df: pd.DataFrame, bucket_name: str, file_name: str, ten
             return
             
         # Create bad records file path
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
         original_filename = file_name.split('/')[-1].replace('.csv', '')
         
         if tenant_id == 'shared':
@@ -575,7 +575,7 @@ def save_bad_records(bad_df: pd.DataFrame, bucket_name: str, file_name: str, ten
         blob.metadata = {
             'original_file': file_name,
             'processing_engine': 'pandas',
-            'failed_timestamp': datetime.utcnow().isoformat(),
+            'failed_timestamp': datetime.now(UTC).isoformat(),
             'bad_record_count': str(len(bad_df)),
             'tenant_id': tenant_id
         }
@@ -596,7 +596,7 @@ def move_file_to_bad_records(bucket_name: str, file_name: str, error_message: st
         source_blob = bucket.blob(file_name)
         
         # Create bad_records path
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
         filename = file_name.split('/')[-1]
         
         if tenant_id == 'shared':
@@ -612,7 +612,7 @@ def move_file_to_bad_records(bucket_name: str, file_name: str, error_message: st
         bad_blob.metadata = {
             'error_message': error_message,
             'processing_engine': 'pandas',
-            'failed_timestamp': datetime.utcnow().isoformat(),
+            'failed_timestamp': datetime.now(UTC).isoformat(),
             'original_path': file_name,
             'tenant_id': tenant_id
         }
