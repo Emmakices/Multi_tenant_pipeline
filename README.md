@@ -36,7 +36,7 @@ Multi-Tenant-Pipeline/
 └── tools/                  # Development and testing utilities
 ```
 
-## 🧪 Test Infrastructure Summary
+## Test Infrastructure Summary
 
 ### Test Statistics Overview
 
