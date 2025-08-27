@@ -204,7 +204,7 @@ class TestEngineHealth:
             )
             
             # Verify success message was printed
-            assert any("✅ pandas:" in str(call) for call in mock_print.call_args_list)
+            assert any("PASS pandas:" in str(call) for call in mock_print.call_args_list)
     
     def test_engine_health_success_without_auth(self, healthy_engine_response):
         """Test successful engine health check without authentication."""
@@ -263,7 +263,7 @@ class TestEngineHealth:
             assert result['details'] == error_text
             
             # Verify error message was printed
-            assert any(f"❌ {engine_name}: HTTP {status_code}" in str(call) 
+            assert any(f"FAIL {engine_name}: HTTP {status_code}" in str(call) 
                       for call in mock_print.call_args_list)
     
     def test_engine_health_timeout_error(self):
@@ -282,7 +282,7 @@ class TestEngineHealth:
             assert result['error'] == 'Request timeout'
             
             # Verify timeout message was printed
-            assert any("⏰ pandas: Timeout" in str(call) for call in mock_print.call_args_list)
+            assert any("TIMEOUT pandas: Timeout" in str(call) for call in mock_print.call_args_list)
     
     def test_engine_health_connection_error(self):
         """Test engine health check with connection error."""
@@ -301,7 +301,7 @@ class TestEngineHealth:
             assert connection_error in result['error']
             
             # Verify connection error message was printed
-            assert any("🔌 polars: Connection Error" in str(call) 
+            assert any("CONNECTION polars: Connection Error" in str(call) 
                       for call in mock_print.call_args_list)
     
     def test_engine_health_unexpected_error(self):
@@ -321,7 +321,7 @@ class TestEngineHealth:
             assert result['error'] == unexpected_error
             
             # Verify error message was printed
-            assert any("💥 dask: Unexpected Error" in str(call) 
+            assert any("ERROR dask: Unexpected Error" in str(call) 
                       for call in mock_print.call_args_list)
     
     def test_engine_health_json_decode_error(self):
@@ -377,7 +377,7 @@ class TestMainFunction:
             
             # Verify success messages were printed
             print_calls = [str(call) for call in mock_print.call_args_list]
-            assert any("🎉 All engines are healthy!" in call for call in print_calls)
+            assert any("SUCCESS All engines are healthy!" in call for call in print_calls)
             assert any("Healthy engines: 3/3" in call for call in print_calls)
     
     def test_main_some_engines_unhealthy(self):
@@ -402,7 +402,7 @@ class TestMainFunction:
             
             # Verify warning message was printed
             print_calls = [str(call) for call in mock_print.call_args_list]
-            assert any("⚠️  Some engines have issues" in call for call in print_calls)
+            assert any("WARNING  Some engines have issues" in call for call in print_calls)
             assert any("Healthy engines: 1/3" in call for call in print_calls)
     
     def test_main_all_engines_failed(self):
@@ -424,7 +424,7 @@ class TestMainFunction:
             
             # Verify failure message was printed
             print_calls = [str(call) for call in mock_print.call_args_list]
-            assert any("🚨 All engines are unavailable" in call for call in print_calls)
+            assert any("ALERT All engines are unavailable" in call for call in print_calls)
             assert any("Healthy engines: 0/3" in call for call in print_calls)
     
     def test_main_json_output_format(self, healthy_engine_response):
@@ -484,7 +484,7 @@ class TestIntegration:
             
             # Verify success summary was printed
             print_calls = [str(call) for call in mock_print.call_args_list]
-            assert any("🎉 All engines are healthy!" in call for call in print_calls)
+            assert any("SUCCESS All engines are healthy!" in call for call in print_calls)
     
     def test_mixed_auth_scenarios(self, mock_auth_token, healthy_engine_response):
         """Test workflow with mixed authentication success/failure scenarios."""

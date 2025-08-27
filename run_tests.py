@@ -87,7 +87,7 @@ class TestRunner:
                 'failures': 0
             }
         
-        logger.info(f"🚀 Starting tests for {engine}")
+        logger.info(f"Starting tests for {engine}")
         start_time = time.time()
         
         try:
@@ -173,7 +173,7 @@ class TestRunner:
         if max_workers is None:
             max_workers = min(len(engines), multiprocessing.cpu_count())
         
-        logger.info(f"🔥 Running tests in parallel across {len(engines)} engines with {max_workers} workers")
+        logger.info(f"Running tests in parallel across {len(engines)} engines with {max_workers} workers")
         start_time = time.time()
         
         results = {}
@@ -193,12 +193,12 @@ class TestRunner:
                     results[engine] = result
                     
                     # Log immediate result
-                    status_emoji = "✅" if result['status'] == 'passed' else "❌"
-                    logger.info(f"{status_emoji} {engine}: {result['status']} in {result['duration']:.1f}s "
+                    status_symbol = "PASS" if result['status'] == 'passed' else "FAIL"
+                    logger.info(f"[{status_symbol}] {engine}: {result['status']} in {result['duration']:.1f}s "
                               f"({result['test_count']} tests, {result['failures']} failures)")
                     
                 except Exception as e:
-                    logger.error(f"❌ {engine}: Exception occurred: {e}")
+                    logger.error(f"[ERROR] {engine}: Exception occurred: {e}")
                     results[engine] = {
                         'engine': engine,
                         'status': 'error',
@@ -232,7 +232,7 @@ class TestRunner:
         if engines is None:
             engines = self.engines
         
-        logger.info(f"🐌 Running tests sequentially across {len(engines)} engines")
+        logger.info(f"Running tests sequentially across {len(engines)} engines")
         start_time = time.time()
         
         results = {}
@@ -242,8 +242,8 @@ class TestRunner:
             result = self.run_engine_tests(engine, test_args)
             results[engine] = result
             
-            status_emoji = "✅" if result['status'] == 'passed' else "❌"
-            logger.info(f"{status_emoji} {engine}: {result['status']} in {result['duration']:.1f}s "
+            status_symbol = "PASS" if result['status'] == 'passed' else "FAIL"
+            logger.info(f"[{status_symbol}] {engine}: {result['status']} in {result['duration']:.1f}s "
                       f"({result['test_count']} tests, {result['failures']} failures)")
         
         total_duration = time.time() - start_time
@@ -269,22 +269,22 @@ class TestRunner:
         summary = results['summary']
         
         print("\n" + "="*80)
-        print("🧪 TEST EXECUTION SUMMARY")
+        print("TEST EXECUTION SUMMARY")
         print("="*80)
         
-        print(f"⏱️  Total Duration: {results['total_duration']:.1f}s")
-        print(f"🎯 Total Tests: {summary['total_tests']}")
-        print(f"✅ Engines Passed: {summary['engines_passed']}")
-        print(f"❌ Engines Failed: {summary['engines_failed']}")
-        print(f"⏭️  Engines Skipped: {summary['engines_skipped']}")
+        print(f"Total Duration: {results['total_duration']:.1f}s")
+        print(f" Total Tests: {summary['total_tests']}")
+        print(f" Engines Passed: {summary['engines_passed']}")
+        print(f" Engines Failed: {summary['engines_failed']}")
+        print(f"  Engines Skipped: {summary['engines_skipped']}")
         
         if summary['total_failures'] > 0:
-            print(f"💥 Total Failures: {summary['total_failures']}")
+            print(f" Total Failures: {summary['total_failures']}")
         
         if summary['total_warnings'] > 0:
-            print(f"⚠️  Total Warnings: {summary['total_warnings']}")
+            print(f"  Total Warnings: {summary['total_warnings']}")
         
-        print("\n📊 ENGINE BREAKDOWN:")
+        print("\n ENGINE BREAKDOWN:")
         print("-" * 80)
         
         for engine, result in results['engines'].items():
@@ -294,25 +294,25 @@ class TestRunner:
             failures = result.get('failures', 0)
             warnings = result.get('warnings', 0)
             
-            status_emoji = {
-                'passed': '✅',
-                'failed': '❌',
-                'error': '💥',
-                'timeout': '⏰',
-                'skipped': '⏭️'
-            }.get(status, '❓')
+            status_symbol = {
+                'passed': 'PASS',
+                'failed': 'FAIL',
+                'error': 'ERROR',
+                'timeout': 'TIMEOUT',
+                'skipped': 'SKIP'
+            }.get(status, 'UNKNOWN')
             
-            print(f"{status_emoji} {engine:15} | {status:8} | {duration:6.1f}s | "
+            print(f"[{status_symbol:7}] {engine:15} | {status:8} | {duration:6.1f}s | "
                   f"{test_count:3d} tests | {failures:2d} failures | {warnings:2d} warnings")
         
         print("-" * 80)
         
         # Overall status
         if summary['engines_failed'] == 0:
-            print("🎉 ALL TESTS PASSED!")
+            print("ALL TESTS PASSED!")
         else:
-            print(f"💔 {summary['engines_failed']} ENGINE(S) FAILED")
-            print("\n❌ FAILED ENGINES:")
+            print(f"{summary['engines_failed']} ENGINE(S) FAILED")
+            print("\nFAILED ENGINES:")
             for engine, result in results['engines'].items():
                 if result['status'] in ['failed', 'error', 'timeout']:
                     print(f"   • {engine}: {result.get('stderr', 'Unknown error')}")
@@ -324,7 +324,7 @@ class TestRunner:
         output_file = self.project_root / filename
         with open(output_file, 'w') as f:
             json.dump(results, f, indent=2, default=str)
-        logger.info(f"📁 Test results saved to {output_file}")
+        logger.info(f"Test results saved to {output_file}")
 
 
 def main():
@@ -372,10 +372,10 @@ def main():
     valid_engines = [e for e in engines_to_test if (runner.project_root / e).exists()]
     if len(valid_engines) != len(engines_to_test):
         invalid = set(engines_to_test) - set(valid_engines)
-        logger.warning(f"⚠️  Invalid engines skipped: {invalid}")
+        logger.warning(f"Invalid engines skipped: {invalid}")
     
     if not valid_engines:
-        logger.error("❌ No valid engines found to test")
+        logger.error("No valid engines found to test")
         return 1
     
     # Run tests

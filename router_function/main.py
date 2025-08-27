@@ -23,9 +23,9 @@ def get_auth_token(url: str) -> str:
         print(f"Failed to get auth token: {e}")
         return None
 
-def test_engine_health(name: str, url: str) -> Dict[str, Any]:
-    """Test health of a single engine."""
-    print(f"\n🔍 Testing {name} engine...")
+def check_engine_health(name: str, url: str) -> Dict[str, Any]:
+    """Check health of a single engine."""
+    print(f"\nTesting {name} engine...")
     print(f"URL: {url}")
     
     # Try with authentication first
@@ -40,48 +40,48 @@ def test_engine_health(name: str, url: str) -> Dict[str, Any]:
         
         if response.status_code == 200:
             data = response.json()
-            print(f"✅ {name}: {data.get('status', 'unknown')} - Engine: {data.get('engine', 'unknown')}")
+            print(f"PASS {name}: {data.get('status', 'unknown')} - Engine: {data.get('engine', 'unknown')}")
             return {"status": "healthy", "details": data}
         else:
-            print(f"❌ {name}: HTTP {response.status_code} - {response.text}")
+            print(f"FAIL {name}: HTTP {response.status_code} - {response.text}")
             return {"status": "unhealthy", "error": f"HTTP {response.status_code}", "details": response.text}
             
     except requests.exceptions.Timeout:
-        print(f"⏰ {name}: Timeout (service may be cold starting)")
+        print(f"TIMEOUT {name}: Timeout (service may be cold starting)")
         return {"status": "timeout", "error": "Request timeout"}
     except requests.exceptions.ConnectionError as e:
-        print(f"🔌 {name}: Connection Error - {str(e)}")
+        print(f"CONNECTION_ERROR {name}: Connection Error - {str(e)}")
         return {"status": "connection_error", "error": str(e)}
     except Exception as e:
-        print(f"💥 {name}: Unexpected Error - {str(e)}")
+        print(f"ERROR {name}: Unexpected Error - {str(e)}")
         return {"status": "error", "error": str(e)}
 
 def main():
     """Test all processing engines."""
-    print("🚀 Testing Multi-Tenant ML Pipeline Processing Engines\n")
+    print("Testing Multi-Tenant ML Pipeline Processing Engines\n")
     
     results = {}
     healthy_count = 0
     
     for name, url in ENGINES.items():
-        result = test_engine_health(name, url)
+        result = check_engine_health(name, url)
         results[name] = result
         if result["status"] == "healthy":
             healthy_count += 1
     
     # Summary
-    print(f"\n📊 SUMMARY:")
+    print(f"\nSUMMARY:")
     print(f"Healthy engines: {healthy_count}/{len(ENGINES)}")
     
     if healthy_count == len(ENGINES):
-        print("🎉 All engines are healthy!")
+        print("All engines are healthy!")
     elif healthy_count > 0:
-        print("⚠️  Some engines have issues")
+        print("Some engines have issues")
     else:
-        print("🚨 All engines are unavailable")
+        print("All engines are unavailable")
     
     # Detailed results
-    print(f"\n📋 DETAILED RESULTS:")
+    print(f"\nDETAILED RESULTS:")
     print(json.dumps(results, indent=2))
     
     return results
