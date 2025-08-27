@@ -389,8 +389,8 @@ make coverage-report       # detailed coverage analysis
 
 | Engine     | Tests   | Pass Rate   | Runtime  | Warnings | Status      |
 | ---------- | ------- | ----------- | -------- | -------- | ----------- |
-| **Pandas** | 57      |  100%     | 9.7s     | 0 ⬇    | Excellent   |
-| **Polars** | 65      |  100%     | 8.4s     | 0 ⬇    | Excellent   |
+| **Pandas** | 57      |  100%     | 9.7s     | 0     | Excellent   |
+| **Polars** | 65      |  100%     | 8.4s     | 0     | Excellent   |
 | **Dask**   | 72      |  100%     | ~30s     | 0      | Excellent   |
 | **Router** | 41      |  100%     | 1.9s     | 0      | Excellent   |
 | **TOTAL**  | **235** | ** 100%** | **<60s** | **0**  | **Perfect** |
