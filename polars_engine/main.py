@@ -696,7 +696,7 @@ def move_file_to_bad_records_polars(
 
 
 @app.route("/process", methods=["POST"])
-def process_file_v2():
+def process_file():
     """
     Main endpoint to process e-commerce files using Polars.
     Expects JSON payload with file information.
@@ -708,9 +708,7 @@ def process_file_v2():
         logger.info(f"Received request: {request_data}")
 
         # Validate request data
-        logger.error(f"DEBUG: Validating request_data: {request_data}")
         if not request_data:
-            logger.error("DEBUG: request_data is None or empty")
             return jsonify({
                 "status": "error",
                 "message": "Missing request data",
@@ -725,9 +723,7 @@ def process_file_v2():
         region = file_info.get("region")
 
         # Validate required fields
-        logger.error(f"DEBUG: file_name={file_name}, bucket_name={bucket_name}")
         if not file_name or not bucket_name:
-            logger.error("DEBUG: Missing required fields, returning 500")
             return jsonify({
                 "status": "error",
                 "message": "Missing required fields: file_name and bucket_name",
