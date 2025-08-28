@@ -1,0 +1,213 @@
+# GitLab CI/CD Pipeline for Multi-Tenant Data Processing
+# Complete replacement for GitHub Actions with no caching issues
+
+# ============================================================================
+# PIPELINE CONFIGURATION
+# ============================================================================
+stages:
+  - lint
+  - test
+  - integration
+  - build
+
+# ============================================================================
+# GLOBAL SETTINGS
+# ============================================================================
+variables:
+  PYTHON_VERSION: "3.12"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  # Environment variables for CI testing
+  CI: "true"
+  GITHUB_ACTIONS: "true" # Keep for compatibility with existing code
+  PYTEST_CURRENT_TEST: "true"
+
+cache:
+  paths:
+    - .cache/pip/
+    - .venv/
+
+# ============================================================================
+# LINT AND CODE QUALITY STAGE
+# ============================================================================
+code-quality:
+  stage: lint
+  image: python:3.12
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install black isort flake8 mypy
+  script:
+    - echo "🔍 Running code quality checks..."
+    - python -m black --check --diff .
+    - python -m isort --check-only --diff .
+    - python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    - echo "✅ Code quality checks passed!"
+  allow_failure: false
+
+# ============================================================================
+# PARALLEL TESTING STAGE
+# ============================================================================
+.test_template: &test_template
+  stage: test
+  image: python:3.12
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install pytest pytest-cov pytest-mock pytest-xdist
+    - pip install pandas numpy flask google-cloud-storage google-cloud-bigquery psutil
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - coverage.xml
+      - .coverage
+    expire_in: 1 week
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+
+test-pandas-engine:
+  <<: *test_template
+  script:
+    - echo "🐼 Testing Pandas Engine..."
+    - cd pandas_engine
+    - python -m pytest test_pandas_engine.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+    - echo "✅ Pandas engine tests completed!"
+  needs: ["code-quality"]
+
+test-polars-engine:
+  <<: *test_template
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install pytest pytest-cov pytest-mock pytest-xdist
+    - pip install polars pandas numpy flask google-cloud-storage google-cloud-bigquery psutil
+  script:
+    - echo "⚡ Testing Polars Engine..."
+    - cd polars_engine
+    - python -m pytest test_polars_engine.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+    - echo "✅ Polars engine tests completed!"
+  needs: ["code-quality"]
+
+test-dask-engine:
+  <<: *test_template
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install pytest pytest-cov pytest-mock pytest-xdist
+    - pip install dask[dataframe] pandas numpy flask google-cloud-storage google-cloud-bigquery psutil
+  script:
+    - echo "⚙️ Testing Dask Engine..."
+    - cd dask_engine
+    - python -m pytest test_dask_engine.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+    - echo "✅ Dask engine tests completed!"
+  needs: ["code-quality"]
+
+test-router-function:
+  <<: *test_template
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install pytest pytest-cov pytest-mock pytest-xdist
+    - pip install requests google-auth
+  script:
+    - echo "🔀 Testing Router Function..."
+    - cd router_function
+    - python -m pytest test_router_function.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+    - echo "✅ Router function tests completed!"
+  needs: ["code-quality"]
+
+# ============================================================================
+# INTEGRATION TESTING STAGE
+# ============================================================================
+integration-tests:
+  stage: integration
+  image: python:3.12
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install pytest pytest-mock
+    - pip install pandas polars dask[dataframe] numpy flask
+    - pip install google-cloud-storage google-cloud-bigquery google-auth
+    - pip install requests psutil
+  script:
+    - echo "🔗 Running integration tests..."
+    - |
+      # Test Health Check Endpoints
+      python -c "
+      import sys
+      import subprocess
+      import os
+      engines = ['pandas_engine', 'polars_engine', 'dask_engine']
+      for engine in engines:
+          try:
+              print(f'Testing {engine} health check...')
+              os.chdir(engine)
+              result = subprocess.run([
+                  'python', '-c', 
+                  'from main import app; client = app.test_client(); response = client.get(\"/health\"); assert response.status_code == 200; print(f\"✅ {engine} health check passed\")'
+              ], capture_output=True, text=True, timeout=10)
+              if result.returncode != 0:
+                  print(f'❌ {engine} health check failed: {result.stderr}')
+                  sys.exit(1)
+              else:
+                  print(result.stdout.strip())
+              os.chdir('..')
+          except subprocess.TimeoutExpired:
+              print(f'❌ {engine} health check timed out')
+              sys.exit(1)
+      print('🎉 All engine health checks passed!')
+      "
+    - echo "✅ Integration tests completed!"
+  needs:
+    - test-pandas-engine
+    - test-polars-engine
+    - test-dask-engine
+    - test-router-function
+
+# ============================================================================
+# BUILD AND PACKAGE STAGE
+# ============================================================================
+build-packages:
+  stage: build
+  image: python:3.12
+  script:
+    - echo "📦 Creating deployment packages..."
+    - mkdir -p dist/
+    - |
+      # Package each engine
+      for engine in pandas_engine polars_engine dask_engine router_function; do
+        echo "Packaging $engine..."
+        cd $engine
+        zip -r "../dist/${engine}.zip" . -x "test_*.py" "__pycache__/*" "*.pyc" ".pytest_cache/*" "*.coverage"
+        cd ..
+      done
+    - ls -la dist/
+    - echo "✅ Build packages created successfully!"
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 month
+  needs: ["integration-tests"]
+  only:
+    - main
+    - develop
+    - feature/*
+
+# ============================================================================
+# PIPELINE NOTIFICATIONS
+# ============================================================================
+notify-success:
+  stage: .post
+  image: alpine:latest
+  script:
+    - echo "🎉 CI/CD Pipeline completed successfully!"
+    - echo "✅ All code quality checks passed"
+    - echo "✅ All engine tests passed"
+    - echo "✅ Integration tests passed"
+    - echo "✅ Build packages created"
+    - echo "🚀 Ready for deployment!"
+  when: on_success
+
+notify-failure:
+  stage: .post
+  image: alpine:latest
+  script:
+    - echo "❌ CI/CD Pipeline failed!"
+    - echo "Please check the failed jobs and fix the issues."
+    - exit 1
+  when: on_failure
