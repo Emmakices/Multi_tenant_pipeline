@@ -706,12 +706,28 @@ def process_file():
         request_data = request.get_json()
         logger.info(f"Received request: {request_data}")
 
+        # Validate request data
+        if not request_data:
+            return jsonify({
+                "status": "error",
+                "message": "Missing request data",
+                "engine": "polars"
+            }), 500
+
         # Extract file information
         file_info = request_data.get("file_info", {})
         file_name = file_info.get("file_name")
         bucket_name = file_info.get("bucket_name")
         file_size = file_info.get("file_size", 0)
         region = file_info.get("region")
+
+        # Validate required fields
+        if not file_name or not bucket_name:
+            return jsonify({
+                "status": "error",
+                "message": "Missing required fields: file_name and bucket_name",
+                "engine": "polars"
+            }), 500
 
         # Extract tenant info from file path
         tenant_id = extract_tenant_from_path(file_name)
