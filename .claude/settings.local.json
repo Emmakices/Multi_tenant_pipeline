@@ -25,7 +25,8 @@
       "Bash(find:*)",
       "Bash(git rm:*)",
       "Bash(git checkout:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(git remote add:*)"
     ],
     "deny": [],
     "ask": []

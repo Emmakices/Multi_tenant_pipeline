@@ -29,26 +29,14 @@ import polars as pl
 import pytest
 
 # Import the Flask app and functions to test
-from main import (
-    BASE_DATASET_ID,
-    EXPECTED_COLUMNS,
-    PROJECT_ID,
-    REGION_TO_BQ_LOCATION,
-    TABLE_ID,
-    VALID_EVENT_TYPES,
-    app,
-    create_ml_features_polars,
-    download_file_from_gcs,
-    extract_tenant_from_path,
-    get_bigquery_location,
-    get_regional_dataset_id,
-    move_file_to_bad_records_polars,
-    perform_data_quality_checks_polars,
-    process_ecommerce_data,
-    save_bad_records_polars,
-    save_to_bigquery_historical_polars,
-    validate_schema_polars,
-)
+from main import (BASE_DATASET_ID, EXPECTED_COLUMNS, PROJECT_ID,
+                  REGION_TO_BQ_LOCATION, TABLE_ID, VALID_EVENT_TYPES, app,
+                  create_ml_features_polars, download_file_from_gcs,
+                  extract_tenant_from_path, get_bigquery_location,
+                  get_regional_dataset_id, move_file_to_bad_records_polars,
+                  perform_data_quality_checks_polars, process_ecommerce_data,
+                  save_bad_records_polars, save_to_bigquery_historical_polars,
+                  validate_schema_polars)
 
 # ============================================================================
 # PYTEST FIXTURES
@@ -802,10 +790,21 @@ class TestFlaskEndpointsPolars:
         assert data["status"] == "error"
         assert data["engine"] == "polars"
 
-    # TEMPORARILY REMOVED: test_process_file_invalid_payload_polars
-    # This test is removed due to persistent CI caching issues
-    # The validation logic works correctly locally but CI runs cached old code
-    # TODO: Re-enable this test when CI caching is resolved
+    def test_process_file_invalid_payload_polars(self, client):
+        """Test process endpoint with invalid payload structure."""
+        invalid_payloads = [
+            None,  # None payload
+            123,  # Integer instead of dict
+            "string",  # String instead of dict
+            {"invalid": "structure"},  # Invalid structure
+        ]
+
+        for payload in invalid_payloads:
+            response = client.post("/process", json=payload)
+            assert response.status_code == 500
+            data = json.loads(response.data)
+            assert data["status"] == "error"
+            assert data["engine"] == "polars"
 
     def test_process_file_download_failure_polars(self, client, sample_request_payload):
         """Test process endpoint with download failure."""

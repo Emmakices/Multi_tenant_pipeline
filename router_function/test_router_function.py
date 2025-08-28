@@ -18,7 +18,6 @@ import google.auth.transport.requests
 import google.oauth2.id_token
 import pytest
 import requests
-
 # Import the functions to test
 from main import ENGINES, check_engine_health, get_auth_token, main
 

@@ -1,0 +1,206 @@
+# Google Cloud Build Pipeline for Multi-Tenant Data Processing
+# Replaces .github/workflows/ci.yml with native Google Cloud integration
+
+# ============================================================================
+# BUILD CONFIGURATION
+# ============================================================================
+options:
+  machineType: "E2_HIGHCPU_8"
+  logging: CLOUD_LOGGING_ONLY
+
+# ============================================================================
+# PIPELINE STEPS
+# ============================================================================
+steps:
+  # ============================================================================
+  # SETUP AND DEPENDENCIES
+  # ============================================================================
+  - name: "python:3.12"
+    id: "install-dependencies"
+    entrypoint: "pip"
+    args:
+      [
+        "install",
+        "pytest",
+        "pytest-cov",
+        "pytest-mock",
+        "pytest-xdist",
+        "black",
+        "isort",
+        "flake8",
+        "mypy",
+        "pandas",
+        "numpy",
+        "polars",
+        "dask[dataframe]",
+        "flask",
+        "requests",
+        "psutil",
+        "google-cloud-storage",
+        "google-cloud-bigquery",
+        "google-auth",
+      ]
+
+  # ============================================================================
+  # CODE QUALITY CHECKS
+  # ============================================================================
+  - name: "python:3.12"
+    id: "black-formatting"
+    entrypoint: "python"
+    args: ["-m", "black", "--check", "--diff", "."]
+    waitFor: ["install-dependencies"]
+
+  - name: "python:3.12"
+    id: "import-sorting"
+    entrypoint: "python"
+    args: ["-m", "isort", "--check-only", "--diff", "."]
+    waitFor: ["install-dependencies"]
+
+  - name: "python:3.12"
+    id: "linting"
+    entrypoint: "python"
+    args:
+      [
+        "-m",
+        "flake8",
+        ".",
+        "--count",
+        "--select=E9,F63,F7,F82",
+        "--show-source",
+        "--statistics",
+      ]
+    waitFor: ["install-dependencies"]
+
+  # ============================================================================
+  # UNIT TESTS - PARALLEL EXECUTION
+  # ============================================================================
+  - name: "python:3.12"
+    id: "test-pandas-engine"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        cd pandas_engine
+        python -m pytest test_pandas_engine.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+    env:
+      - "GITHUB_ACTIONS=true"
+      - "CI=true"
+    waitFor: ["black-formatting", "import-sorting", "linting"]
+
+  - name: "python:3.12"
+    id: "test-polars-engine"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        cd polars_engine
+        python -m pytest test_polars_engine.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+    env:
+      - "GITHUB_ACTIONS=true"
+      - "CI=true"
+    waitFor: ["black-formatting", "import-sorting", "linting"]
+
+  - name: "python:3.12"
+    id: "test-dask-engine"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        cd dask_engine
+        python -m pytest test_dask_engine.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+    env:
+      - "GITHUB_ACTIONS=true"
+      - "CI=true"
+    waitFor: ["black-formatting", "import-sorting", "linting"]
+
+  - name: "python:3.12"
+    id: "test-router-function"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        cd router_function
+        python -m pytest test_router_function.py -v --tb=short --cov=main --cov-report=xml --cov-report=term-missing -n auto
+    env:
+      - "GITHUB_ACTIONS=true"
+      - "CI=true"
+    waitFor: ["black-formatting", "import-sorting", "linting"]
+
+  # ============================================================================
+  # INTEGRATION TESTS
+  # ============================================================================
+  - name: "python:3.12"
+    id: "health-check-tests"
+    entrypoint: "python"
+    args:
+      - "-c"
+      - |
+        import sys
+        import subprocess
+        engines = ['pandas_engine', 'polars_engine', 'dask_engine']
+        for engine in engines:
+            try:
+                result = subprocess.run([
+                    'python', '-c', 
+                    f'import os; os.chdir("{engine}"); from main import app; client = app.test_client(); response = client.get("/health"); assert response.status_code == 200; print(f"✅ {engine} health check passed")'
+                ], capture_output=True, text=True, timeout=10, cwd='/workspace')
+                if result.returncode != 0:
+                    print(f'❌ {engine} health check failed: {result.stderr}')
+                    sys.exit(1)
+                else:
+                    print(result.stdout.strip())
+            except subprocess.TimeoutExpired:
+                print(f'❌ {engine} health check timed out')
+                sys.exit(1)
+        print('🎉 All engine health checks passed!')
+    env:
+      - "GITHUB_ACTIONS=true"
+      - "CI=true"
+    waitFor:
+      [
+        "test-pandas-engine",
+        "test-polars-engine",
+        "test-dask-engine",
+        "test-router-function",
+      ]
+
+  # ============================================================================
+  # BUILD ARTIFACTS
+  # ============================================================================
+  - name: "python:3.12"
+    id: "create-deployment-packages"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        mkdir -p /workspace/dist/
+
+        # Package each engine
+        for engine in pandas_engine polars_engine dask_engine router_function; do
+          echo "Packaging $engine..."
+          cd /workspace/$engine
+          zip -r "/workspace/dist/${engine}.zip" . -x "test_*.py" "__pycache__/*" "*.pyc" ".pytest_cache/*" "*.coverage"
+          cd /workspace
+        done
+
+        # List created packages
+        ls -la /workspace/dist/
+    waitFor: ["health-check-tests"]
+
+# ============================================================================
+# ARTIFACTS AND NOTIFICATIONS
+# ============================================================================
+artifacts:
+  objects:
+    location: "gs://${PROJECT_ID}-build-artifacts"
+    paths:
+      - "dist/*.zip"
+      - "pandas_engine/coverage.xml"
+      - "polars_engine/coverage.xml"
+      - "dask_engine/coverage.xml"
+      - "router_function/coverage.xml"
+
+# ============================================================================
+# TIMING AND RESOURCES
+# ============================================================================
+timeout: "1200s" # 20 minutes max build time
