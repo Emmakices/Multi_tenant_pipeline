@@ -18,7 +18,7 @@
 - [Getting Started](#getting-started)
 - [Advanced Usage](#advanced-usage)
 
-## 🔍 Overview
+##  Overview
 
 This document provides a comprehensive overview of the test infrastructure, quality improvements, and recommendations implemented for the Multi-Tenant Data Processing Pipeline. The pipeline processes e-commerce data using multiple engines (Pandas, Polars, Dask) with a router function for optimal engine selection.
 
