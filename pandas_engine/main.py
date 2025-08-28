@@ -22,26 +22,38 @@ app = Flask(__name__)
 storage_client = None
 bq_client = None
 
+
 def get_storage_client():
     """Get or create the storage client."""
     global storage_client
     if storage_client is None:
         # Skip initialization in CI/testing environments
-        if os.getenv('CI') or os.getenv('GITHUB_ACTIONS') or os.getenv('PYTEST_CURRENT_TEST'):
+        if (
+            os.getenv("CI")
+            or os.getenv("GITHUB_ACTIONS")
+            or os.getenv("PYTEST_CURRENT_TEST")
+        ):
             from unittest.mock import Mock
+
             storage_client = Mock()
             storage_client.bucket = Mock()
         else:
             storage_client = storage.Client()
     return storage_client
 
+
 def get_bq_client():
     """Get or create the BigQuery client."""
     global bq_client
     if bq_client is None:
         # Skip initialization in CI/testing environments
-        if os.getenv('CI') or os.getenv('GITHUB_ACTIONS') or os.getenv('PYTEST_CURRENT_TEST'):
+        if (
+            os.getenv("CI")
+            or os.getenv("GITHUB_ACTIONS")
+            or os.getenv("PYTEST_CURRENT_TEST")
+        ):
             from unittest.mock import Mock
+
             bq_client = Mock()
             bq_client.dataset = Mock()
             bq_client.get_dataset = Mock()
@@ -51,6 +63,7 @@ def get_bq_client():
         else:
             bq_client = bigquery.Client()
     return bq_client
+
 
 # BigQuery Configuration - Your specified project setup
 PROJECT_ID = "data-pipeline-project-450922"
@@ -817,7 +830,9 @@ def save_to_bigquery_historical(
         )
 
         # Load data to BigQuery
-        job = get_bq_client().load_table_from_dataframe(df, table_ref, job_config=job_config)
+        job = get_bq_client().load_table_from_dataframe(
+            df, table_ref, job_config=job_config
+        )
         job.result()  # Wait for job to complete
 
         # Verify the load

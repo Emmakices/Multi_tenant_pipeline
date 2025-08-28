@@ -27,15 +27,28 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
+
 # Import the Flask app and functions to test
-from main import (BASE_DATASET_ID, EXPECTED_COLUMNS, PROJECT_ID,
-                  REGION_TO_BQ_LOCATION, TABLE_ID, VALID_EVENT_TYPES, app,
-                  create_ml_features_polars, download_file_from_gcs,
-                  extract_tenant_from_path, get_bigquery_location,
-                  get_regional_dataset_id, move_file_to_bad_records_polars,
-                  perform_data_quality_checks_polars, process_ecommerce_data,
-                  save_bad_records_polars, save_to_bigquery_historical_polars,
-                  validate_schema_polars)
+from main import (
+    BASE_DATASET_ID,
+    EXPECTED_COLUMNS,
+    PROJECT_ID,
+    REGION_TO_BQ_LOCATION,
+    TABLE_ID,
+    VALID_EVENT_TYPES,
+    app,
+    create_ml_features_polars,
+    download_file_from_gcs,
+    extract_tenant_from_path,
+    get_bigquery_location,
+    get_regional_dataset_id,
+    move_file_to_bad_records_polars,
+    perform_data_quality_checks_polars,
+    process_ecommerce_data,
+    save_bad_records_polars,
+    save_to_bigquery_historical_polars,
+    validate_schema_polars,
+)
 
 # ============================================================================
 # PYTEST FIXTURES
@@ -1052,7 +1065,6 @@ class TestPerformancePolars:
         # Performance check - Polars should handle concurrency well
         total_time = end_time - start_time
         assert total_time < 8  # Should complete faster than pandas
-
 
 
 # ============================================================================

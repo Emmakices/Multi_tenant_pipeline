@@ -22,26 +22,38 @@ app = Flask(__name__)
 storage_client = None
 bq_client = None
 
+
 def get_storage_client():
     """Get or create the storage client."""
     global storage_client
     if storage_client is None:
         # Skip initialization in CI/testing environments
-        if os.getenv('CI') or os.getenv('GITHUB_ACTIONS') or os.getenv('PYTEST_CURRENT_TEST'):
+        if (
+            os.getenv("CI")
+            or os.getenv("GITHUB_ACTIONS")
+            or os.getenv("PYTEST_CURRENT_TEST")
+        ):
             from unittest.mock import Mock
+
             storage_client = Mock()
             storage_client.bucket = Mock()
         else:
             storage_client = storage.Client()
     return storage_client
 
+
 def get_bq_client():
     """Get or create the BigQuery client."""
     global bq_client
     if bq_client is None:
         # Skip initialization in CI/testing environments
-        if os.getenv('CI') or os.getenv('GITHUB_ACTIONS') or os.getenv('PYTEST_CURRENT_TEST'):
+        if (
+            os.getenv("CI")
+            or os.getenv("GITHUB_ACTIONS")
+            or os.getenv("PYTEST_CURRENT_TEST")
+        ):
             from unittest.mock import Mock
+
             bq_client = Mock()
             bq_client.dataset = Mock()
             bq_client.get_dataset = Mock()
@@ -51,6 +63,7 @@ def get_bq_client():
         else:
             bq_client = bigquery.Client()
     return bq_client
+
 
 # BigQuery Configuration - Your specified project setup
 PROJECT_ID = "data-pipeline-project-450922"
@@ -709,11 +722,16 @@ def process_file():
 
         # Validate request data
         if not request_data:
-            return jsonify({
-                "status": "error",
-                "message": "Missing request data",
-                "engine": "polars"
-            }), 500
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Missing request data",
+                        "engine": "polars",
+                    }
+                ),
+                500,
+            )
 
         # Extract file information
         file_info = request_data.get("file_info", {})
@@ -724,11 +742,16 @@ def process_file():
 
         # Validate required fields
         if not file_name or not bucket_name:
-            return jsonify({
-                "status": "error",
-                "message": "Missing required fields: file_name and bucket_name",
-                "engine": "polars"
-            }), 500
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Missing required fields: file_name and bucket_name",
+                        "engine": "polars",
+                    }
+                ),
+                500,
+            )
 
         # Extract tenant info from file path
         tenant_id = extract_tenant_from_path(file_name)

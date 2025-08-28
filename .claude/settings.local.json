@@ -21,7 +21,11 @@
       "Bash(git push:*)",
       "Bash(GITHUB_ACTIONS=true python -c \"from main import app; print(''✅ Pandas engine imports in CI mode'')\")",
       "Bash(GITHUB_ACTIONS=true python -c \"from main import app; print(''Pandas engine imports in CI mode'')\")",
-      "Bash(GITHUB_ACTIONS=true python -m pytest test_polars_engine.py::TestFlaskEndpointsPolars::test_process_file_invalid_payload_polars -v)"
+      "Bash(GITHUB_ACTIONS=true python -m pytest test_polars_engine.py::TestFlaskEndpointsPolars::test_process_file_invalid_payload_polars -v)",
+      "Bash(find:*)",
+      "Bash(git rm:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)"
     ],
     "deny": [],
     "ask": []
