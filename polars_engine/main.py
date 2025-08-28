@@ -696,7 +696,7 @@ def move_file_to_bad_records_polars(
 
 
 @app.route("/process", methods=["POST"])
-def process_file():
+def process_file_v2():
     """
     Main endpoint to process e-commerce files using Polars.
     Expects JSON payload with file information.
