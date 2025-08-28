@@ -146,7 +146,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-cov pytest-mock pytest-xdist
-          pip install polars numpy flask google-cloud-storage google-cloud-bigquery psutil
+          pip install polars pandas numpy flask google-cloud-storage google-cloud-bigquery psutil
 
       - name: Run Polars Engine Tests
         run: |
