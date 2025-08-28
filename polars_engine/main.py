@@ -700,6 +700,7 @@ def process_file():
     """
     Main endpoint to process e-commerce files using Polars.
     Expects JSON payload with file information.
+    Validates request data before processing.
     """
     try:
         # Get request data
