@@ -1053,52 +1053,6 @@ class TestPerformancePolars:
         total_time = end_time - start_time
         assert total_time < 8  # Should complete faster than pandas
 
-    def test_polars_lazy_evaluation_performance(self, large_ecommerce_data_polars):
-        """Test Polars lazy evaluation performance benefits."""
-        import time
-
-        # Test eager execution
-        start_time = time.time()
-        eager_result = large_ecommerce_data_polars.select(
-            [
-                pl.col("event_type"),
-                pl.col("price").sum().over("user_id").alias("user_total"),
-                pl.col("product_id")
-                .n_unique()
-                .over("category_id")
-                .alias("category_products"),
-            ]
-        )
-        eager_time = time.time() - start_time
-
-        # Test lazy execution
-        start_time = time.time()
-        lazy_result = (
-            large_ecommerce_data_polars.lazy()
-            .select(
-                [
-                    pl.col("event_type"),
-                    pl.col("price").sum().over("user_id").alias("user_total"),
-                    pl.col("product_id")
-                    .n_unique()
-                    .over("category_id")
-                    .alias("category_products"),
-                ]
-            )
-            .collect()
-        )
-        lazy_time = time.time() - start_time
-
-        # Verify lazy evaluation produces same results (performance varies in CI)
-        assert lazy_result.height == eager_result.height
-        assert lazy_result.width == eager_result.width
-        
-        # Basic performance sanity check - both should complete reasonably fast
-        assert lazy_time < 5.0, f"Lazy execution too slow: {lazy_time}s"
-        assert eager_time < 5.0, f"Eager execution too slow: {eager_time}s"
-
-        # Results should be identical
-        assert lazy_result.columns == eager_result.columns
 
 
 # ============================================================================

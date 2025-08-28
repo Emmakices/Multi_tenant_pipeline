@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh run list:*)",
+      "Bash(git log:*)",
+      "Bash(python -m pytest test_pandas_engine.py -v)",
+      "Bash(python -m pytest test_polars_engine.py -v)",
+      "Bash(python -m pytest test_dask_engine.py -v)",
+      "Bash(python -m pytest test_router_function.py -v)",
+      "Bash(python -m pytest test_dask_engine.py::TestPerformanceDask::test_dask_lazy_evaluation_performance -v)",
+      "Bash(black:*)",
+      "Bash(isort:*)",
+      "Bash(flake8:*)",
+      "Bash(pip install black isort flake8)",
+      "Bash(python -m black:*)",
+      "Bash(python -m isort:*)",
+      "Bash(python:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(GITHUB_ACTIONS=true python -c \"from main import app; print(''✅ Pandas engine imports in CI mode'')\")",
+      "Bash(GITHUB_ACTIONS=true python -c \"from main import app; print(''Pandas engine imports in CI mode'')\")",
+      "Bash(GITHUB_ACTIONS=true python -m pytest test_polars_engine.py::TestFlaskEndpointsPolars::test_process_file_invalid_payload_polars -v)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
