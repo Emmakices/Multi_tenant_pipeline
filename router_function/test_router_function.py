@@ -20,7 +20,7 @@ import pytest
 import requests
 
 # Import the functions to test
-from main import ENGINES, check_engine_health, get_auth_token, main
+from main import GLOBAL_ENGINES, check_engine_health, get_auth_token, main
 
 # ============================================================================
 # PYTEST FIXTURES
@@ -385,11 +385,11 @@ class TestMainFunction:
             result = main()
 
             # Verify all engines were tested
-            assert mock_health_test.call_count == len(ENGINES)
+            assert mock_health_test.call_count == len(GLOBAL_ENGINES)
 
             # Verify result structure
-            assert len(result) == len(ENGINES)
-            for engine_name in ENGINES.keys():
+            assert len(result) == len(GLOBAL_ENGINES)
+            for engine_name in GLOBAL_ENGINES.keys():
                 assert engine_name in result
                 assert result[engine_name]["status"] == "healthy"
 
@@ -493,14 +493,14 @@ class TestIntegration:
             result = main()
 
             # Verify authentication was attempted for each engine
-            assert mock_request.call_count == len(ENGINES)
+            assert mock_request.call_count == len(GLOBAL_ENGINES)
 
             # Verify HTTP requests were made with auth headers
-            expected_calls = len(ENGINES)
+            expected_calls = len(GLOBAL_ENGINES)
             assert mock_get.call_count == expected_calls
 
             # Verify all engines reported as healthy
-            for engine_name in ENGINES.keys():
+            for engine_name in GLOBAL_ENGINES.keys():
                 assert result[engine_name]["status"] == "healthy"
 
             # Verify success summary was printed
@@ -530,7 +530,7 @@ class TestIntegration:
 
             # Verify mixed auth scenarios were handled
             # All engines should still report healthy despite auth differences
-            for engine_name in ENGINES.keys():
+            for engine_name in GLOBAL_ENGINES.keys():
                 assert result[engine_name]["status"] == "healthy"
 
 
@@ -543,8 +543,8 @@ class TestEdgeCases:
     """Test cases for edge cases and boundary conditions."""
 
     def test_empty_engines_dict(self):
-        """Test behavior when ENGINES dict is empty."""
-        with patch("main.ENGINES", {}), patch("builtins.print") as mock_print:
+        """Test behavior when GLOBAL_ENGINES dict is empty."""
+        with patch("main.GLOBAL_ENGINES", {}), patch("builtins.print") as mock_print:
 
             result = main()
 
@@ -563,7 +563,7 @@ class TestEdgeCases:
             "none_engine": None,
         }
 
-        with patch("main.ENGINES", bad_engines), patch(
+        with patch("main.GLOBAL_ENGINES", bad_engines), patch(
             "main.get_auth_token", return_value=None
         ), patch("requests.get", side_effect=requests.exceptions.InvalidURL), patch(
             "builtins.print"
@@ -659,7 +659,7 @@ class TestPerformance:
 
         # Start threads for each engine
         threads = []
-        for name, url in ENGINES.items():
+        for name, url in GLOBAL_ENGINES.items():
             thread = threading.Thread(target=test_single_engine, args=(name, url))
             threads.append(thread)
             thread.start()
@@ -669,8 +669,8 @@ class TestPerformance:
             thread.join()
 
         # Verify all engines were tested
-        assert len(results) == len(ENGINES)
-        for engine_name in ENGINES.keys():
+        assert len(results) == len(GLOBAL_ENGINES)
+        for engine_name in GLOBAL_ENGINES.keys():
             assert engine_name in results
             assert results[engine_name]["status"] == "healthy"
 
@@ -686,9 +686,9 @@ class TestParametrized:
     @pytest.mark.parametrize(
         "engine_name,expected_url",
         [
-            ("pandas", ENGINES["pandas"]),
-            ("polars", ENGINES["polars"]),
-            ("dask", ENGINES["dask"]),
+            ("pandas", GLOBAL_ENGINES["pandas"]),
+            ("polars", GLOBAL_ENGINES["polars"]),
+            ("dask", GLOBAL_ENGINES["dask"]),
         ],
     )
     def test_each_engine_individually(

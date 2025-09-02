@@ -1,18 +1,23 @@
-# Define the regions where Cloud Functions will be deployed
+# Define the Cloud Function configuration for global bucket monitoring
 locals {
-  # Use the same active regions from your storage configuration
-  function_regions = [
-    "us-west1",
-    # "europe-west1",        # Uncomment when you expand
-    # "northamerica-northeast1",
-    # "asia-southeast1", 
-    # "southamerica-east1"
-  ]
+  # Single Cloud Function region (Canada) - monitors ALL regional buckets
+  function_region = "northamerica-northeast1"
   
-  # Map regions to their corresponding storage buckets
-  storage_buckets = {
-    for region in local.function_regions : region => "terraops-${region}-tenant-data"
-  }
+  # All 12 regional storage buckets that will trigger the function
+  monitored_buckets = [
+    "terraops-us-central1-tenant-data",
+    "terraops-us-east1-tenant-data", 
+    "terraops-us-east4-tenant-data",
+    "terraops-us-west1-tenant-data",
+    "terraops-us-west2-tenant-data",
+    "terraops-northamerica-northeast1-tenant-data",
+    "terraops-europe-west1-tenant-data",
+    "terraops-europe-west2-tenant-data",
+    "terraops-europe-west3-tenant-data",
+    "terraops-europe-west4-tenant-data",
+    "terraops-europe-west9-tenant-data",
+    "terraops-africa-south1-tenant-data"
+  ]
 }
 
 # Create bucket to store Cloud Function source code
@@ -54,49 +59,55 @@ resource "google_storage_bucket_object" "function_source" {
   depends_on = [google_storage_bucket.function_source]
 }
 
-# Create Cloud Functions for each region
-# trunk-ignore(checkov/CKV_GCP_124)
-# trunk-ignore(checkov/CKV_GCP_124)
-resource "google_cloudfunctions_function" "trigger_pubsub" {
-  for_each = toset(local.function_regions)
+# Create Cloud Functions for each monitored bucket
+# Single function per bucket for proper event handling
+resource "google_cloudfunctions_function" "global_file_processor" {
+  for_each = toset(local.monitored_buckets)
   
-  name        = "trigger_pubsub"
-  region      = each.value  
-  description = "Function triggered by file uploads to ${local.storage_buckets[each.value]} bucket"
+  name        = "global-file-processor-${replace(each.value, "terraops-", "")}"
+  region      = local.function_region
+  description = "Enhanced function triggered by file uploads to ${each.value} with tenant parsing and file type detection"
   runtime     = "python311"
   
-  available_memory_mb   = 128
+  available_memory_mb   = 256  # Increased for enhanced processing
   source_archive_bucket = google_storage_bucket.function_source.name
   source_archive_object = google_storage_bucket_object.function_source.name
   entry_point          = "hello_gcs"
+  timeout              = 60   # 60 seconds timeout
   
   event_trigger {
     event_type = "google.storage.object.finalize"
-    resource   = local.storage_buckets[each.value]
+    resource   = each.value
   }
   
   environment_variables = {
-    PUBSUB_TOPIC = google_pubsub_topic.send_to_router.id
-    REGION       = each.value
+    PUBSUB_TOPIC      = google_pubsub_topic.send_to_router.id
+    DEAD_LETTER_TOPIC = google_pubsub_topic.dead_letter_queue.id
   }
   
   labels = {
     environment = var.environment
-    purpose     = "multi_region_ingestion"
-    region      = replace(each.value, "-", "_")
+    purpose     = "global_file_ingestion"
+    version     = "2.0-enhanced"
     created_by  = "terraform"
   }
 }
 
 # Output Cloud Function information
-output "cloud_functions_info" {
-  description = "Information about deployed Cloud Functions"
+output "global_cloud_functions_info" {
+  description = "Information about global file processing Cloud Functions"
   value = {
-    for region in local.function_regions : region => {
-      function_name = google_cloudfunctions_function.trigger_pubsub[region].name
-      region        = region
-      trigger_bucket = local.storage_buckets[region]
-      pubsub_topic  = google_pubsub_topic.send_to_router.id
+    deployment_region = local.function_region
+    function_count    = length(local.monitored_buckets)
+    monitored_buckets = local.monitored_buckets
+    pubsub_topic     = google_pubsub_topic.send_to_router.id
+    dead_letter_queue = google_pubsub_topic.dead_letter_queue.id
+    functions = {
+      for bucket in local.monitored_buckets : bucket => {
+        function_name = google_cloudfunctions_function.global_file_processor[bucket].name
+        trigger_bucket = bucket
+        region_deployed = local.function_region
+      }
     }
   }
 }

@@ -556,23 +556,63 @@ def move_file_to_bad_records_dask(
 @app.route("/process", methods=["POST"])
 def process_file():
     """
-    Main endpoint to process e-commerce files using Dask.
-    Expects JSON payload with file information.
+    Main processing endpoint for the Dask engine - this is where big files come to get processed.
+    
+    Dask is our heavy-duty engine for large datasets that need distributed processing.
+    The router sends us files that are too big for Pandas or Polars to handle efficiently.
+    We can process datasets larger than memory by breaking them into chunks and working
+    on them across multiple workers.
     """
     try:
-        # Get request data
+        # Parse the enhanced message from our router
         request_data = request.get_json()
-        logger.info(f"Received request: {request_data}")
+        logger.info(f"Dask engine received processing request: {request_data}")
 
-        # Extract file information
+        # Extract file information from enhanced message structure
         file_info = request_data.get("file_info", {})
+        processing_metadata = request_data.get("processing_metadata", {})
+        
+        # Get core file details
         file_name = file_info.get("file_name")
         bucket_name = file_info.get("bucket_name")
         file_size = file_info.get("file_size", 0)
-        region = file_info.get("region")
+        
+        # Get tenant and regional info (parsed by Cloud Function)
+        tenant_id = file_info.get("tenant_id")
+        if not tenant_id and file_name:
+            # Fallback: extract from file path for testing or direct calls
+            tenant_id = extract_tenant_from_path(file_name)
+        elif not tenant_id:
+            tenant_id = "unknown"
+        
+        region = file_info.get("region", "us-central1")
+        
+        # Get correlation ID for tracking
+        correlation_id = file_info.get("correlation_id", processing_metadata.get("correlation_id", "unknown"))
+        
+        # Get file type information
+        file_type_info = file_info.get("file_info", {})
+        file_type = file_type_info.get("file_type", "unknown")
+        is_supported = file_type_info.get("is_supported", True)
 
-        # Extract tenant info from file path
-        tenant_id = extract_tenant_from_path(file_name)
+        # Set up logging context for distributed tracing
+        log_context = {
+            'correlation_id': correlation_id,
+            'tenant_id': tenant_id,
+            'file_name': file_name,
+            'file_size': file_size,
+            'file_type': file_type,
+            'engine': 'dask',
+            'region': region
+        }
+        
+        logger.info(f"Starting Dask distributed processing for tenant {tenant_id}", extra=log_context)
+        
+        # Dask is designed for big files - let's see what we're dealing with
+        if file_size < 100 * 1024 * 1024:  # 100MB
+            logger.info(f"Small file for Dask ({file_size / (1024*1024):.1f}MB) - Pandas might be more efficient", extra=log_context)
+        else:
+            logger.info(f"Good fit for Dask processing ({file_size / (1024*1024):.1f}MB) - using distributed approach", extra=log_context)
 
         logger.info(
             f"Processing {file_name} from {bucket_name}, Size: {file_size} bytes, Tenant: {tenant_id}"

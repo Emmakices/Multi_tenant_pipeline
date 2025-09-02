@@ -711,14 +711,17 @@ def move_file_to_bad_records_polars(
 @app.route("/process", methods=["POST"])
 def process_file():
     """
-    Main endpoint to process e-commerce files using Polars.
-    Expects JSON payload with file information.
-    Validates request data before processing.
+    Main processing endpoint for the Polars engine.
+    
+    Polars is great for medium-sized datasets and excels at columnar data like Parquet files.
+    It uses lazy evaluation which means it can be more memory efficient than Pandas for
+    larger datasets. The router typically sends us files that are too big for Pandas
+    but not quite big enough to need Dask's distributed processing.
     """
     try:
-        # Get request data
+        # Parse the enhanced message from our router
         request_data = request.get_json()
-        logger.info(f"Received request: {request_data}")
+        logger.info(f"Polars engine received processing request: {request_data}")
 
         # Validate request data
         if not request_data:
@@ -733,32 +736,72 @@ def process_file():
                 500,
             )
 
-        # Extract file information
+        # Extract file information from our enhanced message structure
         file_info = request_data.get("file_info", {})
+        processing_metadata = request_data.get("processing_metadata", {})
+        
+        # Get the core file details
         file_name = file_info.get("file_name")
         bucket_name = file_info.get("bucket_name")
         file_size = file_info.get("file_size", 0)
-        region = file_info.get("region")
+        
+        # Get tenant and regional info (already parsed by the Cloud Function)
+        tenant_id = file_info.get("tenant_id")
+        if not tenant_id and file_name:
+            # Fallback: extract from file path for testing or direct calls
+            tenant_id = extract_tenant_from_path(file_name)
+        elif not tenant_id:
+            tenant_id = "unknown"
+        
+        region = file_info.get("region", "us-central1")
+        
+        # Get correlation ID for end-to-end tracking
+        correlation_id = file_info.get("correlation_id", processing_metadata.get("correlation_id", "unknown"))
+        
+        # Get file type info for processing decisions
+        file_type_info = file_info.get("file_info", {})
+        file_type = file_type_info.get("file_type", "unknown")
+        is_supported = file_type_info.get("is_supported", True)
 
         # Validate required fields
         if not file_name or not bucket_name:
-            return (
-                jsonify(
-                    {
-                        "status": "error",
-                        "message": "Missing required fields: file_name and bucket_name",
-                        "engine": "polars",
-                    }
-                ),
-                500,
-            )
+            return jsonify({
+                "status": "error",
+                "error": "Missing required fields: file_name and bucket_name",
+                "correlation_id": correlation_id,
+                "engine": "polars",
+                "engine_version": "2.0-enhanced"
+            }), 400
 
-        # Extract tenant info from file path
-        tenant_id = extract_tenant_from_path(file_name)
-
-        logger.info(
-            f"Processing {file_name} from {bucket_name}, Size: {file_size} bytes, Tenant: {tenant_id}"
-        )
+        # Set up structured logging for tracking
+        log_context = {
+            'correlation_id': correlation_id,
+            'tenant_id': tenant_id,
+            'file_name': file_name,
+            'file_size': file_size,
+            'file_type': file_type,
+            'engine': 'polars',
+            'region': region
+        }
+        
+        logger.info(f"Starting Polars processing for tenant {tenant_id}", extra=log_context)
+        
+        # Check if this file size is in our sweet spot - Polars handles medium files well
+        if file_size > 2 * 1024 * 1024 * 1024:  # 2GB
+            logger.warning(f"Large file detected ({file_size / (1024*1024*1024):.1f}GB) - consider Dask for better performance", extra=log_context)
+        elif file_size < 10 * 1024 * 1024:  # 10MB
+            logger.info(f"Small file detected ({file_size / (1024*1024):.1f}MB) - Pandas might be faster for this", extra=log_context)
+        
+        # Check file type support
+        if not is_supported:
+            error_msg = f"File type {file_type} is not supported by Polars engine"
+            logger.error(error_msg, extra=log_context)
+            return jsonify({
+                'status': 'error',
+                'error': error_msg,
+                'correlation_id': correlation_id,
+                'engine': 'polars'
+            }), 400
 
         # Download file from GCS
         file_path = download_file_from_gcs(bucket_name, file_name)

@@ -26,7 +26,18 @@
       "Bash(git rm:*)",
       "Bash(git checkout:*)",
       "Bash(git branch:*)",
-      "Bash(git remote add:*)"
+      "Bash(git remote add:*)",
+      "Bash(unzip:*)",
+      "Bash(terraform:*)",
+      "Bash(gsutil ls:*)",
+      "Bash(pip install:*)",
+      "Bash(gcloud run services list:*)",
+      "Bash(gcloud config get-value:*)",
+      "Bash(gcloud auth:*)",
+      "Bash(curl:*)",
+      "Bash(gcloud run services describe:*)",
+      "Bash(gcloud run services get-iam-policy:*)",
+      "Bash(gcloud run services add-iam-policy-binding:*)"
     ],
     "deny": [],
     "ask": []

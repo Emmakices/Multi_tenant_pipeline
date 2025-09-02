@@ -1,30 +1,48 @@
 variable "logging_bucket_name" {
   description = "Name of the bucket to store access logs"
   type        = string
+  default     = "terraops-global-access-logs"
 }
 
-# locals.tf
+# Configuration for our global multi-tenant storage infrastructure
 locals {
-  # Define ALL regions - easily extendable (keeping all regions for future expansion)
+  # These are all the regions where we want to deploy storage buckets
+  # We picked these to give good global coverage while staying in regions
+  # where Google Cloud has strong data processing capabilities
   regions = [
-    "us-west1",
-    "europe-west1",
-    "northamerica-northeast1",
-    "asia-southeast1",
-    "southamerica-east1"
+    "us-central1",              # Iowa - good central US location
+    "us-east1",                 # South Carolina - covers US East Coast
+    "us-east4",                 # Northern Virginia - close to DC area
+    "us-west1",                 # Oregon - US West Coast
+    "us-west2",                 # Los Angeles - Southern California
+    "northamerica-northeast1",  # Montreal - covers Canada
+    "europe-west1",             # Belgium - central Europe
+    "europe-west2",             # London - UK coverage
+    "europe-west3",             # Frankfurt - Germany financial hub
+    "europe-west4",             # Netherlands - good European connectivity
+    "europe-west9",             # Paris - covers France
+    "africa-south1"             # Johannesburg - African coverage
   ]
 
-  # Active regions for startup phase - ONLY THESE WILL CREATE BUCKETS
-  # Uncomment regions as you expand to new markets
+  # For this deployment, we're going all-in and activating every region
+  # In a startup scenario, you might want to start with just a few regions
+  # and expand as you get customers in different areas
   active_regions = [
-    "us-west1",              # Primary region - ACTIVE
-    # "europe-west1",        # Uncomment when you have EU customers
-    # "northamerica-northeast1", # Uncomment for Canadian customers
-    # "asia-southeast1",     # Uncomment for Asian customers
-    # "southamerica-east1"   # Uncomment for South American customers
+    "us-central1",              
+    "us-east1",                 
+    "us-east4",                 
+    "us-west1",                 
+    "us-west2",                 
+    "northamerica-northeast1",  
+    "europe-west1",             
+    "europe-west2",             
+    "europe-west3",             
+    "europe-west4",             
+    "europe-west9",             
+    "africa-south1"             
   ]
 
-  # Generate bucket names for tenant data buckets (ONLY for active regions)
+  # Generate bucket names for global multi-tenant data buckets
   tenant_buckets = {
     for region in local.active_regions : region => "${var.bucket_prefix}-${region}-tenant-data"
   }
@@ -36,39 +54,40 @@ locals {
     versioning_enabled          = true       # ENABLED for security compliance (Trunk requirement)
   }
 
-  # Simplified tenant folder structure optimized for startup workflow
-  # Each tenant now has their own data folder for complete isolation
-  # Shared data is now in "shared" folder within each regional bucket
+  # Global multi-tenant folder structure for all regions
+  # Standard structure applied to every regional bucket
   tenant_folder_structure = [
-    "shared/",                                # Shared folder in each regional bucket
-    "shared/reference-data/",                 # Shared reference data
-    "shared/reference-data/countries/",       
+    # Shared folder structure
+    "shared/",
+    "shared/ml-models/",
+    "shared/reference-data/",
+    "shared/reference-data/countries/",
     "shared/reference-data/currencies/",
     "shared/reference-data/exchange-rates/",
-    "shared/reference-data/bad_records/",     # Bad records in shared reference data
-    "shared/ml-models/",                      # Shared ML models
-    "shared/ml-models/common/",               # Common ML models for all tenants
-    "shared/ml-models/bad_records/",          # Failed or corrupted shared ML models
+    
+    # Tenants folder structure
     "tenants/",
-    "tenants/demo/",                          # Demo tenant for testing
-    "tenants/demo/data/",                     # Demo tenant's data folder
-    "tenants/demo/data/raw/",                 # Demo tenant's raw data
-    "tenants/demo/data/processed/",           # Demo tenant's processed data
-    "tenants/demo/data/bad_records/",         # Demo tenant's bad records
-    "tenants/demo/data/models/",              # Demo tenant's ML models
-    "tenants/demo/ecommerce/",                # Demo tenant's ecommerce domain
-    "tenants/demo/ecommerce/orders/",
-    "tenants/demo/ecommerce/products/",
-    "tenants/demo/ecommerce/bad_records/",    # Domain-specific bad records
-    "tenants/demo/healthcare/",               # Demo tenant's healthcare domain
-    "tenants/demo/healthcare/bad_records/",   
-    "tenants/tenant-001/",                    # First real tenant
-    "tenants/tenant-001/data/",               # Tenant-001's data folder
-    "tenants/tenant-001/data/raw/",           # Tenant-001's raw data
-    "tenants/tenant-001/data/processed/",     # Tenant-001's processed data
-    "tenants/tenant-001/data/bad_records/",   # Tenant-001's bad records
-    "tenants/tenant-001/data/models/",        # Tenant-001's ML models
-    "tenants/tenant-001/bad_records/"         # Tenant-001's general bad records
+    "tenants/business-domains/",
+    
+    # Sample tenant structures (tenant-001 as example)
+    "tenants/tenant-001/",
+    "tenants/tenant-001/data/",
+    "tenants/tenant-001/data/raw/",
+    "tenants/tenant-001/data/processed/",
+    "tenants/tenant-001/data/bad-records/",
+    
+    # Additional sample tenants for demonstration
+    "tenants/tenant-002/",
+    "tenants/tenant-002/data/",
+    "tenants/tenant-002/data/raw/",
+    "tenants/tenant-002/data/processed/",
+    "tenants/tenant-002/data/bad-records/",
+    
+    "tenants/tenant-003/",
+    "tenants/tenant-003/data/",
+    "tenants/tenant-003/data/raw/",
+    "tenants/tenant-003/data/processed/",
+    "tenants/tenant-003/data/bad-records/"
   ]
 }
 
@@ -117,7 +136,7 @@ resource "google_storage_bucket" "tenant_buckets" {
     }
   }
 
-  # Special lifecycle rule for bad_records - move to cheaper storage much faster
+  # Special lifecycle rule for bad-records - move to cheaper storage much faster
   lifecycle_rule {
     action {
       type          = "SetStorageClass"
@@ -126,7 +145,7 @@ resource "google_storage_bucket" "tenant_buckets" {
     condition {
       age                   = 7   # Move bad records to COLDLINE after just 7 days
       matches_prefix        = ["tenants/", "shared/"]
-      matches_suffix        = ["/bad_records/"]
+      matches_suffix        = ["/bad-records/"]
     }
   }
 
@@ -138,7 +157,7 @@ resource "google_storage_bucket" "tenant_buckets" {
     condition {
       age                   = 30  # Archive bad records after 30 days (vs 365 for normal data)
       matches_prefix        = ["tenants/", "shared/"]
-      matches_suffix        = ["/bad_records/"]
+      matches_suffix        = ["/bad-records/"]
     }
   }
 
@@ -180,7 +199,7 @@ resource "google_storage_bucket" "tenant_buckets" {
   }
 }
 
-# Create placeholder objects to establish folder structure in tenant buckets (includes shared folders)
+# Create placeholder objects to establish global folder structure in all regional buckets
 resource "google_storage_bucket_object" "tenant_folder_structure" {
   for_each = {
     for combination in setproduct(keys(local.tenant_buckets), local.tenant_folder_structure) :
@@ -192,7 +211,7 @@ resource "google_storage_bucket_object" "tenant_folder_structure" {
 
   name   = "${each.value.folder}.gitkeep"
   bucket = google_storage_bucket.tenant_buckets[each.value.region].name
-  content = "# Folder structure maintained for security-compliant multi-tenant architecture with integrated shared data"
+  content = "# Global multi-tenant folder structure maintained across all regions for scalable data processing"
   
   # Set to NEARLINE immediately to match bucket default
   storage_class = "NEARLINE"
@@ -201,75 +220,75 @@ resource "google_storage_bucket_object" "tenant_folder_structure" {
 }
 
 # Storage outputs
-output "startup_configuration_summary" {
-  description = "Summary of security-compliant configuration"
+output "global_deployment_summary" {
+  description = "Summary of global multi-tenant deployment"
   value = {
     total_regions_configured = length(local.regions)
     active_regions_count     = length(local.active_regions)
     active_regions          = local.active_regions
-    inactive_regions        = setsubtract(local.regions, local.active_regions)
+    global_coverage         = "Full global deployment across 12 regions"
     storage_class           = local.common_bucket_config.storage_class
     versioning_enabled      = local.common_bucket_config.versioning_enabled
-    security_features       = "Public access prevention + Versioning enabled (logging disabled to avoid self-logging)"
-    estimated_monthly_cost  = "$15-40 (higher due to versioning, but secure and compliant)"
+    security_features       = "Public access prevention + Versioning enabled"
+    estimated_monthly_cost  = "$180-480 (12 regions with versioning and lifecycle management)"
   }
 }
 
-output "tenant_bucket_names" {
-  description = "Map of active regions to tenant bucket names (now includes shared data)"
+output "regional_bucket_names" {
+  description = "Map of all regions to bucket names with global multi-tenant structure"
   value       = local.tenant_buckets
 }
 
-output "shared_data_note" {
-  description = "Information about shared data location"
-  value       = "Shared data is now located in the 'shared/' folder within each regional tenant bucket"
+output "global_structure_info" {
+  description = "Information about global folder structure"
+  value       = "Each regional bucket contains: shared/ (ml-models, reference-data with countries/currencies/exchange-rates), tenants/ (business-domains + tenant-XXX folders with data/raw/processed/bad-records)"
 }
 
-output "tenant_bucket_urls" {
-  description = "Map of active regions to tenant bucket URLs (contains both tenant and shared data)"
+output "regional_bucket_urls" {
+  description = "Map of all regions to bucket URLs with global structure"
   value = {
     for region, bucket_name in local.tenant_buckets :
     region => "gs://${bucket_name}"
   }
 }
 
-# Security-compliant usage examples (only for active regions)
-output "startup_usage_examples" {
-  description = "Example paths for security-compliant multi-tenant workflow"
+# Global usage examples across all regions
+output "global_usage_examples" {
+  description = "Example paths for global multi-tenant data structure"
   value = length(local.active_regions) > 0 ? {
-    # Demo tenant examples
-    demo_raw_data          = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/demo/data/raw/customer-data-2024-07-21.csv"
-    demo_processed_data    = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/demo/data/processed/ml-features-2024.parquet"
-    demo_models            = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/demo/data/models/customer-prediction-v1.pkl"
-    demo_bad_records       = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/demo/data/bad_records/corrupted-data-2024-07-21.json"
-    demo_ecommerce_orders  = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/demo/ecommerce/orders/sample-orders.csv"
-    demo_ecommerce_bad     = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/demo/ecommerce/bad_records/invalid-orders.csv"
+    # Shared resources examples (available in all regions)
+    shared_ml_models       = "gs://${local.tenant_buckets[local.active_regions[0]]}/shared/ml-models/sentiment-analysis-v2.pkl"
+    shared_countries       = "gs://${local.tenant_buckets[local.active_regions[0]]}/shared/reference-data/countries/iso-countries.json"
+    shared_currencies      = "gs://${local.tenant_buckets[local.active_regions[0]]}/shared/reference-data/currencies/currency-codes.json"
+    shared_exchange_rates  = "gs://${local.tenant_buckets[local.active_regions[0]]}/shared/reference-data/exchange-rates/daily-rates.json"
     
-    # Tenant-001 examples (production tenant)
-    tenant_raw_data        = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/tenant-001/data/raw/sales-data-2024-07-21.csv"
-    tenant_processed_data  = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/tenant-001/data/processed/analytics-ready.parquet"
-    tenant_models          = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/tenant-001/data/models/revenue-forecast-v2.pkl"
-    tenant_bad_records     = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/tenant-001/data/bad_records/failed-processing.csv"
+    # Business domains folder
+    business_domains       = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/business-domains/ecommerce-schema.json"
     
-    # Shared resources (now in same bucket under 'shared/' folder)
-    shared_countries       = "gs://${local.tenant_buckets[local.active_regions[0]]}/shared/reference-data/countries/countries.json"
-    shared_currencies      = "gs://${local.tenant_buckets[local.active_regions[0]]}/shared/reference-data/currencies/exchange-rates.json"
-    shared_bad_data        = "gs://${local.tenant_buckets[local.active_regions[0]]}/shared/reference-data/bad_records/invalid-currency-data.json"
-    shared_ml_models       = "gs://${local.tenant_buckets[local.active_regions[0]]}/shared/ml-models/common/sentiment-analysis-v2.pkl"
-    shared_ml_bad_records  = "gs://${local.tenant_buckets[local.active_regions[0]]}/shared/ml-models/bad_records/corrupted-model.pkl"
+    # Tenant-001 examples (auto-registered tenant)
+    tenant_001_raw         = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/tenant-001/data/raw/sales-data-2024.csv"
+    tenant_001_processed   = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/tenant-001/data/processed/ml-features-2024.parquet"
+    tenant_001_bad_records = "gs://${local.tenant_buckets[local.active_regions[0]]}/tenants/tenant-001/data/bad-records/failed-processing.csv"
+    
+    # Multi-region examples
+    us_central_bucket      = "gs://${local.tenant_buckets["us-central1"]}/tenants/tenant-001/data/raw/"
+    europe_west_bucket     = "gs://${local.tenant_buckets["europe-west1"]}/tenants/tenant-001/data/raw/"
+    africa_south_bucket    = "gs://${local.tenant_buckets["africa-south1"]}/tenants/tenant-001/data/raw/"
   } : {
-    error = "No active regions configured. Please uncomment at least one region in locals.active_regions"
+    error = "No active regions configured"
   }
 }
 
-# Security compliance summary
-output "security_compliance_summary" {
-  description = "Security features implemented to satisfy Trunk checks"
+# Global deployment compliance summary
+output "global_compliance_summary" {
+  description = "Security and compliance features for global deployment"
   value = {
-    public_access_prevention = "enforced"
-    access_logging          = "disabled (to avoid self-logging warning - can be configured with separate bucket later)"
-    versioning             = "enabled"
-    uniform_bucket_access  = "enabled"
-    trunk_compliance       = "Major security checks satisfied without self-logging warnings"
+    public_access_prevention = "enforced across all 12 regions"
+    versioning             = "enabled with lifecycle management"
+    uniform_bucket_access  = "enabled for consistent security"
+    global_coverage        = "12 regions: US (5), Europe (5), North America (1), Africa (1)"
+    tenant_isolation      = "Complete isolation with tenant-specific folders and bad-records handling"
+    shared_resources       = "Global ml-models and reference-data (countries, currencies, exchange-rates)"
+    compliance_features    = "Enterprise-grade security with automatic lifecycle management"
   }
 }

@@ -128,27 +128,74 @@ def extract_tenant_from_path(file_name: str) -> str:
 @app.route("/process", methods=["POST"])
 def process_file():
     """
-    Main endpoint to process e-commerce files using Pandas.
-    Expects JSON payload with file information.
+    Main processing endpoint that receives files from the router function.
+    
+    This is where files land after the router has decided that Pandas is the best
+    engine for processing this particular file. We expect enhanced message structure
+    with tenant information, correlation IDs, and processing metadata.
+    
+    The router is pretty smart about sending us files we can handle well - typically
+    smaller files (under 500MB) and formats that work great with Pandas.
     """
     try:
-        # Get request data
+        # Parse the enhanced message structure from our router
         request_data = request.get_json()
-        logger.info(f"Received request: {request_data}")
+        logger.info(f"Pandas engine received processing request: {request_data}")
 
-        # Extract file information
+        # Extract file information - this comes from our enhanced Cloud Function now
         file_info = request_data.get("file_info", {})
+        processing_metadata = request_data.get("processing_metadata", {})
+        
+        # Get the core file details
         file_name = file_info.get("file_name")
         bucket_name = file_info.get("bucket_name")
         file_size = file_info.get("file_size", 0)
-        region = file_info.get("region")
+        
+        # Get tenant and regional info (now parsed by the Cloud Function)
+        tenant_id = file_info.get("tenant_id")
+        if not tenant_id and file_name:
+            # Fallback: extract from file path for testing or direct calls
+            tenant_id = extract_tenant_from_path(file_name)
+        elif not tenant_id:
+            tenant_id = "unknown"
+        
+        region = file_info.get("region", "us-central1")
+        
+        # Get correlation ID for tracking this request end-to-end
+        correlation_id = file_info.get("correlation_id", processing_metadata.get("correlation_id", "unknown"))
+        
+        # Extract file type information for processing decisions
+        file_type_info = file_info.get("file_info", {})
+        file_type = file_type_info.get("file_type", "unknown")
+        is_supported = file_type_info.get("is_supported", True)
 
-        # Extract tenant info from file path
-        tenant_id = extract_tenant_from_path(file_name)
-
-        logger.info(
-            f"Processing {file_name} from {bucket_name}, Size: {file_size} bytes, Tenant: {tenant_id}"
-        )
+        # Set up structured logging context for tracking
+        log_context = {
+            'correlation_id': correlation_id,
+            'tenant_id': tenant_id,
+            'file_name': file_name,
+            'file_size': file_size,
+            'file_type': file_type,
+            'engine': 'pandas',
+            'region': region
+        }
+        
+        logger.info(f"Starting Pandas processing for tenant {tenant_id}", extra=log_context)
+        
+        # Quick file size check - Pandas works best with smaller files
+        if file_size > 500 * 1024 * 1024:  # 500MB
+            logger.warning(f"Large file detected ({file_size / (1024*1024):.1f}MB) - may impact performance", extra=log_context)
+        
+        # Check if we can actually handle this file type
+        if not is_supported:
+            error_msg = f"File type {file_type} is not supported by Pandas engine"
+            logger.error(error_msg, extra=log_context)
+            return jsonify({
+                'status': 'error',
+                'error': error_msg,
+                'message': error_msg,
+                'correlation_id': correlation_id
+            }), 400
 
         # Download file from GCS
         file_path = download_file_from_gcs(bucket_name, file_name)
@@ -177,25 +224,54 @@ def process_file():
         # Get the correct dataset ID for response
         dataset_id = get_regional_dataset_id(region)
 
-        return (
-            jsonify(
-                {
-                    "status": "success",
-                    "message": f"Successfully processed {file_name} with Pandas",
-                    "engine": "pandas",
-                    "region": region,
-                    "tenant_id": tenant_id,
-                    "good_records": good_record_count,
-                    "bad_records": bad_record_count,
-                    "processing_timestamp": datetime.now(UTC).isoformat(),
-                    "bigquery_table": f"{PROJECT_ID}.{dataset_id}.{TABLE_ID}",
-                }
-            ),
-            200,
-        )
+        # Log successful processing with full context
+        logger.info(f"Successfully processed {good_record_count} records for tenant {tenant_id}", extra=log_context)
+        
+        # Return enhanced response with correlation tracking (flat structure for test compatibility)
+        return jsonify({
+            "status": "success",
+            "message": f"Pandas engine successfully processed {file_name}",
+            "correlation_id": correlation_id,
+            "engine": "pandas",
+            "engine_version": "2.0-enhanced",
+            "region": region,
+            "tenant_id": tenant_id,
+            "file_type": file_type,
+            "file_size_mb": round(file_size / (1024 * 1024), 2),
+            "processing_timestamp": datetime.now(UTC).isoformat(),
+            "good_records": good_record_count,
+            "bad_records": bad_record_count,
+            "bigquery_table": f"{PROJECT_ID}.{dataset_id}.{TABLE_ID}",
+            "data_quality_status": "processed" if good_record_count > 0 else "no_valid_data",
+            "file_size_category": "large" if file_size > 100*1024*1024 else "medium" if file_size > 10*1024*1024 else "small",
+            "optimal_engine": "pandas" if file_size < 500*1024*1024 else "dask_recommended",
+            # Keep nested structure for advanced monitoring
+            "processing_details": {
+                "engine": "pandas",
+                "engine_version": "2.0-enhanced",
+                "region": region,
+                "tenant_id": tenant_id,
+                "file_type": file_type,
+                "file_size_mb": round(file_size / (1024 * 1024), 2),
+                "processing_timestamp": datetime.now(UTC).isoformat()
+            },
+            "results": {
+                "good_records_processed": good_record_count,
+                "bad_records_flagged": bad_record_count,
+                "bigquery_table": f"{PROJECT_ID}.{dataset_id}.{TABLE_ID}",
+                "data_quality_status": "processed" if good_record_count > 0 else "no_valid_data"
+            }
+        }), 200
 
     except Exception as e:
-        logger.error(f"Error processing file: {str(e)}")
+        # Enhanced error handling with correlation tracking
+        error_context = log_context.copy() if 'log_context' in locals() else {}
+        error_context.update({
+            'error': str(e),
+            'error_type': type(e).__name__
+        })
+        
+        logger.error(f"Pandas engine processing failed: {str(e)}", extra=error_context, exc_info=True)
 
         # Move entire file to bad_records folder if processing fails
         if "file_name" in locals() and "bucket_name" in locals():
@@ -206,24 +282,44 @@ def process_file():
                 tenant_id if "tenant_id" in locals() else "unknown",
             )
 
-        return jsonify({"status": "error", "message": str(e), "engine": "pandas"}), 500
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "message": str(e),
+            "correlation_id": correlation_id if 'correlation_id' in locals() else 'unknown',
+            "engine": "pandas",
+            "engine_version": "2.0-enhanced",
+            "error_details": {
+                "error_type": type(e).__name__,
+                "tenant_id": tenant_id if 'tenant_id' in locals() else 'unknown',
+                "processing_stage": "pandas_processing",
+                "file_moved_to_bad_records": "file_name" in locals() and "bucket_name" in locals()
+            }
+        }), 500
 
 
 def download_file_from_gcs(bucket_name: str, file_name: str) -> str:
-    """Download file from Google Cloud Storage to local temp file."""
+    """
+    Download a file from Google Cloud Storage so we can process it locally.
+    
+    We download to a temporary file because Pandas needs to read from the local
+    filesystem. The temp file gets cleaned up automatically when we're done.
+    """
     try:
+        # Connect to the storage bucket and grab the file
         bucket = get_storage_client().bucket(bucket_name)
         blob = bucket.blob(file_name)
 
-        # Create temporary file
+        # Create a temporary file to store the download
+        # We use .csv extension by default but it works for other formats too
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
         blob.download_to_filename(temp_file.name)
 
-        logger.info(f"Downloaded {file_name} to {temp_file.name}")
+        logger.info(f"Successfully downloaded {file_name} to local temp file")
         return temp_file.name
 
     except Exception as e:
-        logger.error(f"Error downloading file: {str(e)}")
+        logger.error(f"Had trouble downloading {file_name} from {bucket_name}: {str(e)}")
         raise
 
 
@@ -938,20 +1034,38 @@ def move_file_to_bad_records(
 
 @app.route("/health", methods=["GET"])
 def health_check():
-    """Health check endpoint."""
-    return (
-        jsonify(
-            {
-                "status": "healthy",
-                "engine": "pandas",
-                "supported_formats": ["csv", "json", "xlsx"],
-                "data_type": "ecommerce_events",
-                "bigquery_target": f"{PROJECT_ID}.{{regional_dataset}}.{TABLE_ID}",
-                "version": "2.0-historical",
-            }
-        ),
-        200,
-    )
+    """
+    Health check endpoint that tells the router if we're ready to process files.
+    
+    The router function calls this to make sure we're up and running before
+    sending us any files to process. We report back what kinds of files we're
+    good at handling so the router can make smart decisions.
+    """
+    return jsonify({
+        "status": "healthy",
+        "engine": "pandas",
+        "engine_version": "2.0-enhanced",
+        "supported_formats": ["csv", "json", "xlsx", "excel"],
+        "capabilities": {
+            "optimal_file_size_range": "1KB - 500MB",
+            "max_tested_file_size": "10GB",
+            "supported_formats": ["csv", "json", "xlsx", "excel"],
+            "data_processing": "ML-ready feature engineering",
+            "tenant_isolation": "full_support"
+        },
+        "performance_profile": {
+            "memory_usage": "loads_full_dataset",
+            "best_for": ["small_to_medium_files", "structured_data", "ml_model_files"],
+            "processing_speed": "fast_for_small_files"
+        },
+        "integration": {
+            "accepts_enhanced_messages": True,
+            "correlation_tracking": "supported",
+            "bigquery_target": f"{PROJECT_ID}.{{regional_dataset}}.{TABLE_ID}",
+            "bad_records_handling": "automatic_isolation"
+        },
+        "timestamp": datetime.now(UTC).isoformat()
+    }), 200
 
 
 @app.route("/", methods=["GET"])
